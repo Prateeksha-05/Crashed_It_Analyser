@@ -5,3 +5,5 @@ numpy
 pillow
 torch
 torchvision
+python-telegram-bot
+requests
