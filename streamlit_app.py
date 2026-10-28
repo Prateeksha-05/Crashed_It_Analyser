@@ -1,22 +1,25 @@
+from io import BytesIO
+import re
 import cv2
 import numpy as np
+import requests
 import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
 # Page Configuration
 st.set_page_config(
-    page_title="CrashedIt",
+    page_title="CrashEdit - Vehicle Damage & Accident Assessment",
     page_icon="🚗",
     layout="centered",
 )
 
-# Custom CSS Injection for a cleaner, professional dashboard look
+# Custom CSS Injection for a professional dashboard look
 st.markdown(
     """
     <style>
     .main {
-        background-color:#e3736b;
+        background-color: #f8f9fa;
     }
     .stAlert {
         border-radius: 10px;
@@ -25,21 +28,16 @@ st.markdown(
         color: #1f2937;
         font-family: 'Helvetica Neue', sans-serif;
     }
-    .metric-card {
-        background-color:#e3736b;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-st.title("🚗 CrashedIt")
+st.title("🚗 CrashEdit Forensic Vehicle Damage Assessment")
 st.write(
-    "Upload an accident scene photo to run AI vehicle detection, damage"
-    " analysis, and traffic violation assessment."
+    "Upload an accident scene photo or paste a public Google Drive link to run"
+    " AI vehicle detection, damage analysis, and traffic violation"
+    " assessment."
 )
 
 
@@ -120,7 +118,7 @@ def assess_damage_opencv(vehicle_crop):
     else:
       asymmetry_score = 0.0
   else:
-      asymmetry_score = 0.0
+    asymmetry_score = 0.0
 
   damage_score = (edge_density * 1.2) + (asymmetry_score * 0.6)
 
@@ -134,15 +132,49 @@ def assess_damage_opencv(vehicle_crop):
   return {"condition": condition, "density": round(damage_score, 3)}
 
 
-# File Uploader Interface Widget inside a styled container
-with st.container():
+# --- INPUT SELECTION: File Uploader OR Google Drive Link ---
+input_method = st.radio(
+    "Select Image Input Method:", ("Upload File", "Google Drive Public Link")
+)
+
+image_pil = None
+
+if input_method == "Upload File":
   uploaded_file = st.file_uploader(
       "Choose an accident scene image...", type=["jpg", "jpeg", "png", "webp"]
   )
+  if uploaded_file is not None:
+    image_pil = Image.open(uploaded_file)
+else:
+  gdrive_url = st.text_input(
+      "Paste Public Google Drive Image Link (Ensure permission is 'Anyone with"
+      " the link'):",
+      "",
+  )
+  if gdrive_url:
+    file_id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", gdrive_url)
+    if file_id_match:
+      file_id = file_id_match.group(1)
+      download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+      try:
+        response = requests.get(download_url)
+        if response.status_code == 200:
+          image_pil = Image.open(BytesIO(response.content))
+          st.success("Successfully fetched image from Google Drive!")
+        else:
+          st.error(
+              "Failed to download. Make sure the file link permissions are"
+              " public."
+          )
+      except Exception as e:
+        st.error(f"Error fetching from Google Drive: {e}")
+    else:
+      st.warning(
+          "Invalid Google Drive link format. Ensure it contains `/file/d/...`"
+      )
 
-if uploaded_file is not None:
-  # Read image for processing
-  image_pil = Image.open(uploaded_file)
+# --- EXECUTE PROCESSING IF IMAGE IS AVAILABLE ---
+if image_pil is not None:
   image_np = np.array(image_pil)
   image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
@@ -157,7 +189,7 @@ if uploaded_file is not None:
   H, W, _ = image_cv.shape
   vehicle_classes = [2, 3, 5, 7]  # car, motorcycle, bus, truck
 
-  with st.spinner("Analyzing accident scene..."):
+  with st.spinner("Analyzing accident scene with YOLOv8 & OpenCV..."):
     results = model(image_cv, conf=0.4, iou=0.45)
     detected_vehicles = []
     raw_detections = []
@@ -215,12 +247,12 @@ if uploaded_file is not None:
         detected_vehicles, len(detected_vehicles)
     )
 
-    # Display Results in Streamlit UI with columns for a structured dashboard layout
+    # Display Results in Streamlit UI
     st.markdown("---")
     st.subheader("🔍 Forensic Analysis Report")
-    
+
     col1, col2 = st.columns([1.2, 0.8])
-    
+
     with col1:
       st.image(
           annotated_rgb,
@@ -232,9 +264,7 @@ if uploaded_file is not None:
       st.metric(label="Total Vehicles Detected", value=len(detected_vehicles))
       st.markdown("### 🚙 Vehicle Breakdown")
       for v in detected_vehicles:
-        st.write(
-            f"- **V{v['id']} ({v['type']})**: `{v['condition']}`"
-        )
+        st.write(f"- **V{v['id']} ({v['type']})**: `{v['condition']}`")
 
     st.markdown("### ⚖️ Potential Violations & Indicators")
     for viol in violations:
