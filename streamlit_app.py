@@ -92,8 +92,8 @@ async def handle_telegram_photo(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 def run_telegram_bot():
-  TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"  # Replace with your token
-  if TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
+  TOKEN = "8939155184:AAH2d5MM4xwqsWnIF5Yus6QdiiZj4UvRa54"  # Replace with your token
+  if TOKEN == "8939155184:AAH2d5MM4xwqsWnIF5Yus6QdiiZj4UvRa54":
     return
   
   loop = asyncio.new_event_loop()
