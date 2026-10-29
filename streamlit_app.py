@@ -39,8 +39,9 @@ st.markdown(
 )
 st.title("🚗 CrashedIt ")
 st.write(
-    "Upload an accident scene photo or paste a public Google Drive link"
-    " or send you images to our telegram Chatbot :crashedit_bot!!"
+  "Got accident evidence ? Drop the photo and get instant image based insights !"
+    " Upload your files or share a public access Google Drive link ."
+    " Also try out our Telegram chatbot : crashedit_bot , for lightning fast analysis ." 
 )
 
 
