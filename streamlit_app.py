@@ -13,14 +13,14 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 
 # Page Configuration
 st.set_page_config(
-    page_title="CrashEdit - Vehicle Damage & Accident Assessment",
+    page_title="CrashedIt",
     page_icon="🚗",
     layout="centered",
 )
 
-st.title("🚗 CrashEdit Forensic Vehicle Damage Assessment")
+st.title("🚗 CrashedIt")
 st.write(
-    "Upload an accident scene photo, paste a Google Drive link, or message our Telegram Bot!"
+    "Upload an accident scene photo, paste a Google Drive link, or message our Telegram Bot: crashedit_bot !!"
 )
 
 
@@ -161,7 +161,7 @@ if image_pil is not None:
   H, W, _ = image_cv.shape
   vehicle_classes = [2, 3, 5, 7]
 
-  with st.spinner("Analyzing accident scene with YOLOv8 & OpenCV..."):
+  with st.spinner("Analyzing accident scene ..."):
     results = model(image_cv, conf=0.4, iou=0.45)
     detected_vehicles = []
     raw_detections = []
@@ -204,7 +204,7 @@ if image_pil is not None:
     annotated_rgb = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
 
     st.markdown("---")
-    st.subheader("🔍 Forensic Analysis Report")
+    st.subheader("🔍 Analysis Report")
     
     col1, col2 = st.columns([1.2, 0.8])
     with col1:
