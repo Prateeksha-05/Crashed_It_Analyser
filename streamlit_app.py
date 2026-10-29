@@ -54,33 +54,27 @@ model = load_model()
 
 
 def analyze_traffic_violations(detected_vehicles, total_count):
-   violations = []
-
-  if total_count >= 2:
-    violations.append("- Failure to maintain safe following distance (Rear-end collision pattern)")
-    violations.append("- Potential delayed reaction time / distracted driving")
-    violations.append("- Intersection right-of-way violation or improper lane merging")
-  elif total_count == 1:
-    violations.append("- Single-vehicle loss of control")
-    violations.append("- Driving too fast for road/weather conditions")
-    violations.append("- Potential fixed-object or roadside hazard collision")
-  else:
-    violations.append("- Insufficient vehicle telemetry detected in frame")
-
-  heavy_damages = [v for v in detected_vehicles if v['condition'] == 'Heavy Damage']
-  moderate_damages = [v for v in detected_vehicles if v['condition'] == 'Moderate Damage']
-
-  if len(heavy_damages) > 0:
-    violations.append("- High-velocity impact indicator (Severe structural deformation)")
-    violations.append("- Excessive speeding or failure to yield right-of-way")
-  elif len(moderate_damages) > 0:
-    violations.append("- Moderate kinetic transfer (Failure to brake adequately)")
-  else:
-    violations.append("- Low-impact or minor contact friction indicator")
-
-  return violations
-
-
+    violations = []
+    if total_count >= 2:
+        violations.append("- Failure to maintain safe following distance (Rear-end collision pattern)")
+        violations.append("- Potential delayed reaction time / distracted driving")
+        violations.append("- Intersection right-of-way violation or improper lane merging")
+    elif total_count == 1:
+        violations.append("- Single-vehicle loss of control")
+        violations.append("- Driving too fast for road/weather conditions")
+        violations.append("- Potential fixed-object or roadside hazard collision")
+    else:
+        violations.append("- Insufficient vehicle telemetry detected in frame")
+    heavy_damages = [v for v in detected_vehicles if v['condition'] == 'Heavy Damage']
+    moderate_damages = [v for v in detected_vehicles if v['condition'] == 'Moderate Damage']
+    if len(heavy_damages) > 0:
+        violations.append("- High-velocity impact indicator (Severe structural deformation)")
+        violations.append("- Excessive speeding or failure to yield right-of-way")
+    elif len(moderate_damages) > 0:
+        violations.append("- Moderate kinetic transfer (Failure to brake adequately)")
+    else:
+        violations.append("- Low-impact or minor contact friction indicator")
+    return violations
 def assess_damage_opencv(vehicle_crop):
   if vehicle_crop.size == 0:
     return {"condition": "Unknown", "density": 0.0}
