@@ -31,7 +31,7 @@ st.markdown(
     /* Header typography for high readability on the new background */
     h1, h2, h3, p, label {
         color: #1f2937 !important;
-        font-family: 'Helvetica Neue', sans-serif;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     </style>
 """,
@@ -40,7 +40,7 @@ st.markdown(
 st.title("🚗 CrashedIt ")
 st.write(
     "Upload an accident scene photo or paste a public Google Drive link"
-    "or send you images to our telegram Chatbot :crashedit_bot!!"
+    " or send you images to our telegram Chatbot :crashedit_bot!!"
 )
 
 
