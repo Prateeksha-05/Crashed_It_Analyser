@@ -1,49 +1,79 @@
-import os
+from io import BytesIO
+import re
 import cv2
 import numpy as np
+import requests
+import streamlit as st
+from PIL import Image
 from ultralytics import YOLO
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# Load YOLOv8 model
-model = YOLO("yolov8n.pt")
+# Page Configuration
+st.set_page_config(
+    page_title="CrashedIt",
+    page_icon="🚗",
+    layout="centered",
+)
+
+# Custom CSS Injection for a professional dashboard look
+st.markdown(
+    """
+    <style>
+    /* Main application background */
+    .stApp {
+        background-color: #e3736b;
+    }
+    
+    /* Optional: Make card/container backgrounds white for great contrast */
+    div.stMarkdown, .stAlert {
+        border-radius: 10px;
+    }
+    
+    /* Header typography for high readability on the new background */
+    h1, h2, h3, p, label {
+        color: #1f2937 !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+st.title("🚗 CrashedIt ")
+st.write(
+  "Got accident evidence ? Drop the photo and get instant image based insights !<br>Upload your files or share a public access Google Drive link .<br>Also try out our Telegram chatbot : crashedit_bot , for lightning fast analysis ." , unsafe_allow_html= True
+)
+
+
+# Load YOLOv8 model with Streamlit caching so it loads only once into RAM
+@st.cache_resource
+def load_model():
+  return YOLO("yolov8n.pt")
+
+
+model = load_model()
 
 
 def analyze_traffic_violations(detected_vehicles, total_count):
-  violations = []
-
-  if total_count >= 2:
-    violations.append(
-        "- Failure to maintain safe following distance (Rear-end collision"
-        " pattern)"
-    )
-    violations.append("- Potential delayed reaction time / distracted driving")
-    violations.append("- Intersection right-of-way violation or improper lane merging")
-  elif total_count == 1:
-    violations.append("- Single-vehicle loss of control")
-    violations.append("- Driving too fast for road/weather conditions")
-    violations.append("- Potential fixed-object or roadside hazard collision")
-  else:
-    violations.append("- Insufficient vehicle telemetry detected in frame")
-
-  heavy_damages = [v for v in detected_vehicles if v["condition"] == "Heavy Damage"]
-  moderate_damages = [
-      v for v in detected_vehicles if v["condition"] == "Moderate Damage"
-  ]
-
-  if len(heavy_damages) > 0:
-    violations.append(
-        "- High-velocity impact indicator (Severe structural deformation)"
-    )
-    violations.append("- Excessive speeding or failure to yield right-of-way")
-  elif len(moderate_damages) > 0:
-    violations.append("- Moderate kinetic transfer (Failure to brake adequately)")
-  else:
-    violations.append("- Low-impact or minor contact friction indicator")
-
-  return violations
-
-
+    violations = []
+    if total_count >= 2:
+        violations.append("- Failure to maintain safe following distance (Rear-end collision pattern)")
+        violations.append("- Potential delayed reaction time / distracted driving")
+        violations.append("- Intersection right-of-way violation or improper lane merging")
+    elif total_count == 1:
+        violations.append("- Single-vehicle loss of control")
+        violations.append("- Driving too fast for road/weather conditions")
+        violations.append("- Potential fixed-object or roadside hazard collision")
+    else:
+        violations.append("- Insufficient vehicle telemetry detected in frame")
+    heavy_damages = [v for v in detected_vehicles if v['condition'] == 'Heavy Damage']
+    moderate_damages = [v for v in detected_vehicles if v['condition'] == 'Moderate Damage']
+    if len(heavy_damages) > 0:
+        violations.append("- High-velocity impact indicator (Severe structural deformation)")
+        violations.append("- Excessive speeding or failure to yield right-of-way")
+    elif len(moderate_damages) > 0:
+        violations.append("- Moderate kinetic transfer (Failure to brake adequately)")
+    else:
+        violations.append("- Low-impact or minor contact friction indicator")
+    return violations
 def assess_damage_opencv(vehicle_crop):
   if vehicle_crop.size == 0:
     return {"condition": "Unknown", "density": 0.0}
@@ -91,22 +121,55 @@ def assess_damage_opencv(vehicle_crop):
   return {"condition": condition, "density": round(damage_score, 3)}
 
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  # Notify user processing has started
-  status_msg = await update.message.reply_text(
-      "🔍 Analyzing accident scene with YOLOv8 & OpenCV..."
+# --- INPUT SELECTION: File Uploader OR Google Drive Link ---
+input_method = st.radio(
+    "Select Image Input Method:", ("Upload File", "Google Drive Public Link")
+)
+
+image_pil = None
+
+if input_method == "Upload File":
+  uploaded_file = st.file_uploader(
+      "Choose an accident scene image...", type=["jpg", "jpeg", "png", "webp"]
   )
+  if uploaded_file is not None:
+    image_pil = Image.open(uploaded_file)
+else:
+  gdrive_url = st.text_input(
+      "Paste Public Google Drive Image Link (Ensure permission is 'Anyone with"
+      " the link'):",
+      "",
+  )
+  if gdrive_url:
+    file_id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", gdrive_url)
+    if file_id_match:
+      file_id = file_id_match.group(1)
+      download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+      try:
+        response = requests.get(download_url)
+        if response.status_code == 200:
+          image_pil = Image.open(BytesIO(response.content))
+          st.success("Successfully fetched image from Google Drive!")
+        else:
+          st.error(
+              "Failed to download. Make sure the file link permissions are"
+              " public."
+          )
+      except Exception as e:
+        st.error(f"Error fetching from Google Drive: {e}")
+    else:
+      st.warning(
+          "Invalid Google Drive link format. Ensure it contains `/file/d/...`"
+      )
 
-  # Download image from Telegram
-  photo_file = await update.message.photo[-1].get_file()
-  input_path = "input_temp.jpg"
-  output_path = "output_annotated.jpg"
-  await photo_file.download_to_drive(input_path)
+# --- EXECUTE PROCESSING IF IMAGE IS AVAILABLE ---
+if image_pil is not None:
+  image_np = np.array(image_pil)
+  image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-  # Process image with OpenCV and YOLOv8
-  image_cv = cv2.imread(input_path)
   H, W, _ = image_cv.shape
 
+  # Smart resizing to maintain performance
   max_dimension = 800
   if max(H, W) > max_dimension:
     scale = max_dimension / float(max(H, W))
@@ -115,94 +178,83 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
   H, W, _ = image_cv.shape
   vehicle_classes = [2, 3, 5, 7]  # car, motorcycle, bus, truck
 
-  results = model(image_cv, conf=0.4, iou=0.45)
-  detected_vehicles = []
-  raw_detections = []
+  with st.spinner("Analyzing accident scene ..."):
+    results = model(image_cv, conf=0.4, iou=0.45)
+    detected_vehicles = []
+    raw_detections = []
 
-  for r in results:
-    for box in r.boxes:
-      cls_id = int(box.cls[0])
-      if cls_id in vehicle_classes:
-        class_name = model.names[cls_id].capitalize()
-        coords = box.xyxy[0].tolist()
-        x1, y1, x2, y2 = map(int, coords)
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(W, x2), min(H, y2)
+    for r in results:
+      for box in r.boxes:
+        cls_id = int(box.cls[0])
+        if cls_id in vehicle_classes:
+          class_name = model.names[cls_id].capitalize()
+          coords = box.xyxy[0].tolist()
+          x1, y1, x2, y2 = map(int, coords)
+          x1, y1 = max(0, x1), max(0, y1)
+          x2, y2 = min(W, x2), min(H, y2)
 
-        if (x2 - x1) < 40 or (y2 - y1) < 40:
-          continue
-        raw_detections.append(
-            {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "class": class_name}
-        )
+          if (x2 - x1) < 40 or (y2 - y1) < 40:
+            continue
 
-  raw_detections = sorted(raw_detections, key=lambda d: d["x1"])
-  vehicle_count = 0
-  summary_lines = []
+          raw_detections.append(
+              {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "class": class_name}
+          )
 
-  for det in raw_detections:
-    vehicle_count += 1
-    x1, y1, x2, y2 = det["x1"], det["y1"], det["x2"], det["y2"]
-    class_name = det["class"]
+    raw_detections = sorted(raw_detections, key=lambda d: d["x1"])
 
-    vehicle_crop = image_cv[y1:y2, x1:x2]
-    damage_info = assess_damage_opencv(vehicle_crop)
+    vehicle_count = 0
+    for det in raw_detections:
+      vehicle_count += 1
+      x1, y1, x2, y2 = det["x1"], det["y1"], det["x2"], det["y2"]
+      class_name = det["class"]
 
-    detected_vehicles.append({
-        "id": vehicle_count,
-        "type": class_name,
-        "condition": damage_info["condition"],
-        "density": damage_info["density"],
-    })
+      vehicle_crop = image_cv[y1:y2, x1:x2]
+      damage_info = assess_damage_opencv(vehicle_crop)
 
-    summary_lines.append(
-        f"• Vehicle {vehicle_count} ({class_name}): `{damage_info['condition']}`"
-        f" (Score: {damage_info['density']})"
+      detected_vehicles.append({
+          "id": vehicle_count,
+          "type": class_name,
+          "condition": damage_info["condition"],
+          "density": damage_info["density"],
+      })
+
+      # Draw bounding boxes and labels
+      cv2.rectangle(image_cv, (x1, y1), (x2, y2), (0, 0, 255), 3)
+      label = f"Vehicle {vehicle_count}: {class_name}"
+      cv2.putText(
+          image_cv,
+          label,
+          (x1, max(y1 - 10, 20)),
+          cv2.FONT_HERSHEY_SIMPLEX,
+          0.6,
+          (0, 255, 0),
+          2,
+      )
+
+    annotated_rgb = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
+    violations = analyze_traffic_violations(
+        detected_vehicles, len(detected_vehicles)
     )
 
-    # Draw bounding box and label
-    cv2.rectangle(image_cv, (x1, y1), (x2, y2), (0, 0, 255), 3)
-    cv2.putText(
-        image_cv,
-        f"V{vehicle_count}: {class_name}",
-        (x1, max(y1 - 10, 20)),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 255, 0),
-        2,
-    )
+    # Display Results in Streamlit UI
+    st.markdown("---")
+    st.subheader("🔍 Analysis Report")
 
-  violations = analyze_traffic_violations(detected_vehicles, len(detected_vehicles))
-  cv2.imwrite(output_path, image_cv)
+    col1, col2 = st.columns([1.2, 0.8])
 
-  # Format caption for Telegram
-  caption = (
-      "🚨 *CrashEdit Forensic Report*\n\n"
-      f"*Total Vehicles Detected:* {len(detected_vehicles)}\n\n"
-      "*🚙 Vehicle Breakdown:*\n"
-      + ("\n".join(summary_lines) if summary_lines else "None detected")
-      + "\n\n*⚖️ Potential Violations:*\n"
-      + ("\n".join(violations) if violations else "None detected")
-  )
+    with col1:
+      st.image(
+          annotated_rgb,
+          caption="Annotated Accident Scene Breakdown",
+          use_container_width=True,
+      )
 
-  # Send back the annotated image and report
-  await update.message.reply_photo(
-      photo=open(output_path, "rb"), caption=caption, parse_mode="Markdown"
-  )
+    with col2:
+      st.metric(label="Total Vehicles Detected", value=len(detected_vehicles))
+      st.markdown("### 🚙 Vehicle Breakdown")
+      for v in detected_vehicles:
+        st.write(f"- **V{v['id']} ({v['type']})**: `{v['condition']}`")
 
-  # Clean up temp files
-  if os.path.exists(input_path):
-    os.remove(input_path)
-  if os.path.exists(output_path):
-    os.remove(output_path)
-
-
-def main():
-  TOKEN = "8939155184:AAH2d5MM4xwqsWnIF5Yus6QdiiZj4UvRa54"  # Replace with your token from BotFather
-  app = ApplicationBuilder().token(TOKEN).build()
-  app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-  print("🤖 CrashEdit Telegram Bot is running and waiting for photos...")
-  app.run_polling()
-
-
-if __name__ == "__main__":
-  main()
+    st.markdown("### ⚖️ Potential Violations & Indicators")
+    for viol in violations:
+      st.write(viol)
